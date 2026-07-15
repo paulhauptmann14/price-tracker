@@ -142,6 +142,36 @@ class TestCheckProduct:
         assert updated and updated[-1] is product
 
 
+class RaisingNotifier:
+    """Notifier whose backend always fails (e.g. no display available)."""
+
+    def notify(self, title: str, message: str) -> None:
+        raise RuntimeError("notification backend unavailable")
+
+
+class TestNotifierRobustness:
+    def test_notifier_failure_does_not_crash_check(self):
+        service = make_service(scraper=FakeScraper(price=8.0), notifier=RaisingNotifier())
+        product = service.add_product("Book", "http://x", target_price=10.0)
+        # must not raise even though the notifier blows up
+        service.check_product(product)
+        assert product.last_price == 8.0
+        assert product.status is ProductStatus.TARGET_REACHED
+
+    def test_notifier_failure_does_not_stop_the_loop(self):
+        updated: list[Product] = []
+        service = make_service(
+            scraper=FakeScraper(price=8.0),
+            notifier=RaisingNotifier(),
+            on_update=updated.append,
+        )
+        service.add_product("A", "http://a", target_price=10.0)
+        service.add_product("B", "http://b", target_price=10.0)
+        service.check_all()
+        # both products were processed despite the notifier failing on each
+        assert len(updated) == 2
+
+
 class TestThreading:
     def test_start_runs_at_least_one_pass_then_stop(self):
         passed = threading.Event()

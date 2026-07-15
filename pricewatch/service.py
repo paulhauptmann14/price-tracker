@@ -152,10 +152,15 @@ class MonitorService:
     # -- helpers -----------------------------------------------------------
 
     def _notify_target_reached(self, product: Product) -> None:
-        self._notifier.notify(
-            "Price alert",
-            f"{product.name} is now {product.last_price} (target {product.target_price})",
-        )
+        # A failing notification must never abort the monitoring loop: the price
+        # update matters more than the popup. Log and carry on.
+        try:
+            self._notifier.notify(
+                "Price alert",
+                f"{product.name} is now {product.last_price} (target {product.target_price})",
+            )
+        except Exception as exc:  # noqa: BLE001 - defensive: any backend failure is non-fatal
+            logger.warning("Notification failed for %s: %s", product.name, exc)
 
     def _persist(self) -> None:
         with self._lock:
